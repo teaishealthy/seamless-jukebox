@@ -59,7 +59,6 @@ router.get("/callback", async (request: Request) => {
   const state = url.searchParams.get("state");
   // Get the stored state from the cookie, assume its not the only cookie
   const storedState = request.headers.get("Cookie")?.split(";")?.find(c => c.trim().startsWith("spotify-auth-state"))?.split("=")[1];
-  console.log(state, storedState);
   if (state === null || code === null || state !== storedState) {
     return new Response("State mismatch", { status: 400 });
   }
@@ -78,7 +77,6 @@ router.get("/callback", async (request: Request) => {
     },
     body: new URLSearchParams(params).toString(),
   });
-  console.log(authResponse.status);
   if (!authResponse.ok) {
     return new Response("Error", { status: 500 });
   }
