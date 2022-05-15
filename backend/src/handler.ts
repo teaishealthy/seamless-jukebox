@@ -24,14 +24,21 @@ const generateAuth = () => {
   return "Basic " + btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
 };
 
-router.get("/login", () => {
+const buildRedirectUri = (request: Request) => {
+  let url = new URL(request.url);
+  url = new URL(url.origin);
+  url.pathname = "/callback";
+  return url.toString();
+};
+
+router.get("/login", (request: Request) => {
   const state = generateRandomString(16);
 
   const params = {
     response_type: "code",
     client_id: CLIENT_ID,
     scope: SCOPES,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: buildRedirectUri(request),
     state: state,
     show_dialog: "true",
   };
@@ -50,15 +57,16 @@ router.get("/callback", async (request: Request) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const storedState = request.headers.get("Cookie")?.split("=")[1];
-
+  // Get the stored state from the cookie, assume its not the only cookie
+  const storedState = request.headers.get("Cookie")?.split(";")?.find(c => c.trim().startsWith("spotify-auth-state"))?.split("=")[1];
+  console.log(state, storedState);
   if (state === null || code === null || state !== storedState) {
     return new Response("State mismatch", { status: 400 });
   }
 
   const params = {
     code: code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: buildRedirectUri(request),
     grant_type: "authorization_code",
   };
 
@@ -66,9 +74,11 @@ router.get("/callback", async (request: Request) => {
     method: "POST",
     headers: {
       Authorization: generateAuth(),
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(params).toString(),
   });
+  console.log(authResponse.status);
   if (!authResponse.ok) {
     return new Response("Error", { status: 500 });
   }
@@ -77,7 +87,7 @@ router.get("/callback", async (request: Request) => {
   const accessToken = json.access_token;
   const refreshToken = json.refresh_token;
 
-  const redirectUrl = new URL(REDIRECT_URI);
+  const redirectUrl = new URL(REDIRECT_TO);
   redirectUrl.hash = `access-token=${accessToken}&refresh-token=${refreshToken}`;
   redirectUrl.pathname = "/";
 
@@ -85,7 +95,7 @@ router.get("/callback", async (request: Request) => {
   response = new Response(response.body, response);
   response.headers.append(
     "Set-Cookie",
-    "spotify-auth-state=; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    "spotify-auth-state=0; expires=Thu, 01 Jan 1970 00:00:00 GMT"
   );
   return response;
 });
@@ -100,6 +110,7 @@ router.get("/refresh", async (request: Request) => {
     method: "POST",
     headers: {
       Authorization: generateAuth(),
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
       grant_type: "refresh_token",
